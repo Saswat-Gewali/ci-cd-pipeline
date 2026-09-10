@@ -1,0 +1,61 @@
+# CI/CD Pipeline for the Tip and Bill Splitter.
+#
+# This file currently holds stage 1 of 3, the test job. The build and deploy
+# jobs get added later, each one gated on the job before it, so a commit that
+# fails its tests never gets built and a commit that fails to build never gets
+# published.
+name: CI/CD Pipeline
+
+# When this pipeline runs.
+on:
+  # Every push to main, which is the branch that will eventually deploy.
+  push:
+    branches: [main]
+  # Every pull request that targets main, so a branch is checked before merging.
+  pull_request:
+    branches: [main]
+
+# Read only access to the repo is all the test job needs. Setting this at the
+# top level replaces the default token permissions with the minimum, and later
+# jobs that need more (the deploy job needs to write to Pages) will ask for it
+# themselves rather than everything being granted here.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    # A GitHub hosted Ubuntu runner, a clean throwaway virtual machine that is
+    # created for this job and destroyed when it finishes. Nothing carries over
+    # from a previous run, which is what makes the result trustworthy.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Copy the repository onto the runner. Without this the runner is empty,
+      # because it starts with no knowledge of your code at all.
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      # Install Node.js and turn on dependency caching. 'lts/*' resolves to the
+      # current Long Term Support release, so the pipeline follows Node LTS
+      # without this file needing an edit every year. cache: 'npm' saves the npm
+      # download cache between runs, keyed on package-lock.json, which makes the
+      # install step much faster on later runs.
+      - name: Set up Node.js LTS
+        uses: actions/setup-node@v7
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      # Install dependencies exactly as package-lock.json pins them. npm ci is
+      # the CI counterpart of npm install: it deletes node_modules first, will
+      # not silently update the lockfile, and fails if the lockfile and
+      # package.json disagree. That is what makes a CI run reproducible.
+      - name: Install dependencies
+        run: npm ci
+
+      # Run the Vitest suite once, in non watch mode (the "test" script is
+      # "vitest run"). A failing test exits non zero, which fails this step,
+      # which fails the job and marks the whole pipeline red.
+      - name: Run unit tests
+        run: npm test
