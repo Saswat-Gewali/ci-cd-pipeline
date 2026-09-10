@@ -1,9 +1,9 @@
 # CI/CD Pipeline for the Tip and Bill Splitter.
 #
-# This file currently holds stage 1 of 3, the test job. The build and deploy
-# jobs get added later, each one gated on the job before it, so a commit that
-# fails its tests never gets built and a commit that fails to build never gets
-# published.
+# This file currently holds stages 1 and 2 of 3, the test and build jobs. The
+# deploy job gets added later. Each stage is gated on the one before it, so a
+# commit that fails its tests never gets built and a commit that fails to build
+# never gets published.
 name: CI/CD Pipeline
 
 # When this pipeline runs.
@@ -59,3 +59,43 @@ jobs:
       # which fails the job and marks the whole pipeline red.
       - name: Run unit tests
         run: npm test
+
+  build:
+    name: Build
+    # This is the gate. 'needs: test' tells Actions that build depends on test,
+    # so build does not start until test has finished successfully. If test
+    # fails, build is skipped entirely rather than failing, and the deploy job
+    # we add next will hang off build the same way. Without this line the two
+    # jobs would run at the same time, and broken code could still be built.
+    needs: test
+
+    # A brand new Ubuntu runner. Jobs do not share a machine, so nothing the
+    # test job installed or produced exists here. That is why this job has to
+    # check out the code and install dependencies again from scratch.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Copy the repository onto this runner, exactly as the test job did.
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      # Same Node setup as the test job. The npm cache is shared across jobs in
+      # the same repo, keyed on package-lock.json, so this restores the cache
+      # the test job just warmed up rather than downloading everything again.
+      - name: Set up Node.js LTS
+        uses: actions/setup-node@v7
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      # Install from the lockfile again. Vite itself is a devDependency, so the
+      # build cannot run until the dependencies are present on this machine.
+      - name: Install dependencies
+        run: npm ci
+
+      # Produce the production build: Vite bundles and minifies the app into
+      # dist/. This is the step that catches problems the unit tests cannot see,
+      # such as a broken import path or a syntax error in a file that no test
+      # happens to import. A failed build exits non zero and stops the pipeline.
+      - name: Build the production bundle
+        run: npm run build
