@@ -74,6 +74,14 @@ jobs:
     # check out the code and install dependencies again from scratch.
     runs-on: ubuntu-latest
 
+    # Job level permissions override the top level 'contents: read' for this job
+    # only. configure-pages reads the repository's Pages settings through the
+    # API, which the token cannot do unless it is granted pages access. Read is
+    # enough here: only the deploy job will need pages: write.
+    permissions:
+      contents: read
+      pages: read
+
     steps:
       # Copy the repository onto this runner, exactly as the test job did.
       - name: Check out the repository
@@ -93,9 +101,42 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Read the repository's GitHub Pages settings and expose them as outputs
+      # (base_url, base_path, host, origin).
+      #
+      # A caveat worth knowing: this action can only auto configure the base
+      # path for Next, Nuxt, Gatsby, and SvelteKit. Vite is not on that list, so
+      # it does not touch our build. We do not need it to, because
+      # vite.config.js sets base: './', which emits relative asset paths that
+      # work at any Pages subpath.
+      #
+      # It earns its place for a different reason: it fails immediately, with a
+      # clear message, if Pages is not enabled or is not set to "GitHub
+      # Actions". Without it that mistake surfaces much later, in the deploy
+      # job, with a far more cryptic error.
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
       # Produce the production build: Vite bundles and minifies the app into
       # dist/. This is the step that catches problems the unit tests cannot see,
       # such as a broken import path or a syntax error in a file that no test
       # happens to import. A failed build exits non zero and stops the pipeline.
       - name: Build the production bundle
         run: npm run build
+
+      # Lift dist/ off this runner and store it with the workflow run.
+      #
+      # This is the step that makes deployment possible at all. This runner is
+      # destroyed the moment the job ends, taking dist/ with it, and the deploy
+      # job runs on a completely different machine. Uploading packs dist/ into a
+      # tar archive that outlives the runner, so the deploy job can pull it down
+      # by name.
+      #
+      # The path input is required here: the action defaults to '_site/', which
+      # is the Jekyll convention, so pointing it at Vite's './dist' is what
+      # makes it find our files. The artifact is named 'github-pages' by
+      # default, which is the exact name actions/deploy-pages looks for.
+      - name: Upload dist as a Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./dist
