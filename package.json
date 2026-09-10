@@ -1,0 +1,17 @@
+{
+  "name": "tip-bill-splitter",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Tip and Bill Splitter, a small Vite app used to demonstrate a GitHub Actions CI/CD pipeline.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
+  }
+}
