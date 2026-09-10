@@ -87,7 +87,7 @@ export function calculateTotal(bill, tipPercent) {
  */
 export function splitPerPerson(total, people) {
   const headCount = Math.trunc(Number(people));
-  if (!Number.isFinite(headCount) || headCount < 1) {
+  if (!Number.isFinite(headCount) || headCount < 0) {
     return 0;
   }
   return toSafeNumber(total) / headCount;
