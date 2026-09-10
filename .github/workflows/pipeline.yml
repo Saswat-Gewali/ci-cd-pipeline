@@ -1,9 +1,8 @@
 # CI/CD Pipeline for the Tip and Bill Splitter.
 #
-# This file currently holds stages 1 and 2 of 3, the test and build jobs. The
-# deploy job gets added later. Each stage is gated on the one before it, so a
-# commit that fails its tests never gets built and a commit that fails to build
-# never gets published.
+# Three stages run in sequence: test, then build, then deploy. Each stage is
+# gated on the one before it, so a commit that fails its tests never gets built
+# and a commit that fails to build never gets published.
 name: CI/CD Pipeline
 
 # When this pipeline runs.
@@ -140,3 +139,60 @@ jobs:
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./dist
+
+  deploy:
+    name: Deploy
+    # The second gate. Deploy waits for build, which itself waits for test, so
+    # the full chain is test to build to deploy. Nothing reaches the live site
+    # unless every stage before it passed.
+    needs: build
+
+    # Only publish from a real push to main. Pull request runs still get tested
+    # and built, which is the point of checking a branch before merging, but
+    # they must not overwrite the live site with unreviewed code.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    # Least privilege, granted per job rather than to the whole workflow:
+    #   contents: read   clone the repo, the baseline every job needs
+    #   pages: write     create a new GitHub Pages deployment
+    #   id-token: write  mint a short lived OIDC token that proves to Pages that
+    #                    this specific workflow run is the one asking to deploy
+    # Only this job can touch Pages. If the test or build job were ever
+    # compromised, neither could publish anything, because their tokens simply
+    # do not carry these rights.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    # A deployment environment. Naming it github-pages is what makes the run
+    # show as a real deployment rather than an ordinary job, and it is the
+    # environment the Pages service expects. The url is filled in from the
+    # deploy step's own output, so the live link appears on the run summary and
+    # in the repository sidebar once the job finishes.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+
+    # Let one deployment finish before the next begins. Two pushes landing close
+    # together would otherwise try to publish at the same time and one would
+    # fail. cancel-in-progress stays false so an in flight deployment is allowed
+    # to complete rather than being abandoned half done.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+
+    steps:
+      # Publish the artifact the build job uploaded.
+      #
+      # There is no checkout and no npm install here, because this job does not
+      # need your source at all. It downloads the 'github-pages' artifact by
+      # name, hands it to the Pages service, and waits for the site to go live.
+      #
+      # The id is what makes the environment url above work: it lets the
+      # environment block read this step's page_url output.
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
