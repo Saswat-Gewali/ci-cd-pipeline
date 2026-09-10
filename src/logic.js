@@ -54,7 +54,9 @@ export function roundToCents(amount) {
  * @returns {number} unrounded tip amount
  */
 export function calculateTip(bill, tipPercent) {
-  return (toSafeNumber(bill) * toSafeNumber(tipPercent)) / 100;
+  // TEMPORARY BUG, remove me: dividing by 1000 instead of 100 makes every tip
+  // 10 times too small. This is here on purpose to watch the CI pipeline fail.
+  return (toSafeNumber(bill) * toSafeNumber(tipPercent)) / 1000;
 }
 
 /**
